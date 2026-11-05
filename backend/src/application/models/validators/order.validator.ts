@@ -13,7 +13,11 @@ export const orderIdParamsSchema = z.object({
   id: z
     .string()
     .regex(/^[1-9]\d{0,18}$/, "Order ID must be a positive integer.")
-    .refine((value) => BigInt(value) <= 9_223_372_036_854_775_807n),
+    .refine(
+      (value) =>
+        /^[1-9]\d{0,18}$/.test(value) &&
+        BigInt(value) <= 9_223_372_036_854_775_807n,
+    ),
 });
 
 export const orderListQuerySchema = paginationQuerySchema
@@ -47,7 +51,9 @@ export const orderCreateRequestSchema = z
                   .string()
                   .regex(/^[1-9]\d{0,18}$/)
                   .refine(
-                    (value) => BigInt(value) <= 9_223_372_036_854_775_807n,
+                    (value) =>
+                      /^[1-9]\d{0,18}$/.test(value) &&
+                      BigInt(value) <= 9_223_372_036_854_775_807n,
                   ),
                 z.number().int().positive().safe().max(9_007_199_254_740_991),
               ])

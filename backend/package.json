@@ -4,10 +4,10 @@
   "description": "Node.js API for the Azatech online shop PostgreSQL database",
   "main": "dist/server.js",
   "scripts": {
-    "build": "tsc && tsc-alias",
+    "build": "tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json",
     "start": "tsx --env-file=.env src/server.ts",
-    "lint": "eslint src/application/abstract/repositories src/application/models/error/application.error.ts src/application/models/requests src/application/models/validators src/application/models/response src/application/use-cases src/domain/errors src/domain/services src/infrastructure/repositories/auth.repository.ts src/infrastructure/repositories/catalog.repository.ts src/infrastructure/repositories/order.repository.ts src/infrastructure/utilities/issue-access-token.ts src/presentation/endpoints src/presentation/openapi.ts src/presentation/middleware/rate-limit.middleware.ts tests",
-    "test": "tsx --test tests/order-domain.test.ts",
+    "lint": "eslint src/application/abstract/repositories src/application/models/error/application.error.ts src/application/models/requests src/application/models/validators src/application/models/response src/application/use-cases src/domain/errors src/domain/services src/infrastructure/repositories/auth.repository.ts src/infrastructure/repositories/catalog.repository.ts src/infrastructure/repositories/order.repository.ts src/infrastructure/utilities/issue-access-token.ts src/presentation/endpoints src/presentation/swagger/openapi.ts src/presentation/middleware/rate-limit.middleware.ts tests",
+    "test": "node --import tsx --test --experimental-test-coverage --test-coverage-include=src/presentation/endpoints/*.ts --test-coverage-include=src/application/use-cases/**/*.ts --test-coverage-lines=80 tests",
     "typecheck": "tsc --noEmit"
   },
   "keywords": [],

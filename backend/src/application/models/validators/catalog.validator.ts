@@ -4,30 +4,43 @@ export const productIdParamsSchema = z.object({
   id: z
     .string()
     .regex(/^[1-9]\d{0,18}$/)
-    .refine((value) => BigInt(value) <= 9_223_372_036_854_775_807n),
+    .refine(
+      (value) =>
+        /^[1-9]\d{0,18}$/.test(value) &&
+        BigInt(value) <= 9_223_372_036_854_775_807n,
+    ),
 });
+
+const productCodeSchema = z.string().trim().min(1).max(50);
+const productNameSchema = z.string().trim().min(1).max(200);
+const productPriceSchema = z
+  .union([z.string(), z.number()])
+  .transform(String)
+  .refine(
+    (value) =>
+      /^\d+(\.\d{1,2})?$/.test(value) &&
+      Number(value) > 0 &&
+      Number(value) <= 9_999_999_999.99,
+  );
+const lowStockThresholdSchema = z.number().int().min(0).max(2_147_483_647);
 
 export const productCreateRequestSchema = z
   .object({
-    product_code: z.string().trim().min(1).max(50),
-    product_name: z.string().trim().min(1).max(200),
+    product_code: productCodeSchema,
+    product_name: productNameSchema,
     stock: z.number().int().min(0).max(2_147_483_647).default(0),
-    price: z
-      .union([z.string(), z.number()])
-      .transform(String)
-      .refine(
-        (value) =>
-          /^\d+(\.\d{1,2})?$/.test(value) &&
-          Number(value) > 0 &&
-          Number(value) <= 9_999_999_999.99,
-      ),
-    low_stock_threshold: z.number().int().min(0).max(2_147_483_647).default(5),
+    price: productPriceSchema,
+    low_stock_threshold: lowStockThresholdSchema.default(5),
   })
   .strict();
 
-export const productUpdateRequestSchema = productCreateRequestSchema
-  .partial()
-  .omit({ stock: true })
+export const productUpdateRequestSchema = z
+  .object({
+    product_code: productCodeSchema.optional(),
+    product_name: productNameSchema.optional(),
+    price: productPriceSchema.optional(),
+    low_stock_threshold: lowStockThresholdSchema.optional(),
+  })
   .strict()
   .refine((value) => Object.keys(value).length > 0, {
     message: "At least one product field must be provided.",
