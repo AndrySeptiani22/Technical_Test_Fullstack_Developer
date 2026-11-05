@@ -61,7 +61,8 @@ export class HTTPContextAccessor implements IHTTPContextAccessor {
   }
 
   getCorrelationId(): string | null {
-    return HTTPContextAccessor.asyncLocalStorage.getStore()?.correlationId ?? null;
+    return (
+      HTTPContextAccessor.asyncLocalStorage.getStore()?.correlationId ?? null
+    );
   }
-
 }

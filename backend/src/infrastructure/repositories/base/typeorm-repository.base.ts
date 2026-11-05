@@ -13,11 +13,14 @@ import {
   PaginatedResult,
   PaginationQuery,
 } from "@application/models/pagination/pagination.query";
-import { IRepository, RepositoryUpdate } from "@application/abstract/repositories/base/irepository";
+import {
+  IRepository,
+  RepositoryUpdate,
+} from "@application/abstract/repositories/base/irepository";
 
-export abstract class TypeOrmRepositoryBase<TEntity extends ObjectLiteral>
-  implements IRepository<TEntity>
-{
+export abstract class TypeOrmRepositoryBase<
+  TEntity extends ObjectLiteral,
+> implements IRepository<TEntity> {
   protected readonly entityRepository: Repository<TEntity>;
   private readonly httpContextAccessor = new HTTPContextAccessor();
 
@@ -71,7 +74,10 @@ export abstract class TypeOrmRepositoryBase<TEntity extends ObjectLiteral>
       updateValues.updatedAt = new Date();
       updateValues.updatedBy = this.httpContextAccessor.getUserId();
     }
-    const result = await this.entityRepository.update(where, updateValues as any);
+    const result = await this.entityRepository.update(
+      where,
+      updateValues as any,
+    );
     return result.affected ?? 0;
   }
 
@@ -82,8 +88,10 @@ export abstract class TypeOrmRepositoryBase<TEntity extends ObjectLiteral>
 
   private hasAuditColumns(): boolean {
     const columns = this.entityRepository.metadata.columns;
-    return columns.some((column) => column.propertyName === "createdBy") &&
-      columns.some((column) => column.propertyName === "updatedBy");
+    return (
+      columns.some((column) => column.propertyName === "createdBy") &&
+      columns.some((column) => column.propertyName === "updatedBy")
+    );
   }
 
   protected async paginate(

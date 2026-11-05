@@ -1,5 +1,6 @@
 import type { NextFunction, Request, RequestHandler, Response } from "express";
-import jwt, { type SignOptions } from "jsonwebtoken";
+import jwt from "jsonwebtoken";
+import { issueAccessToken as createAccessToken } from "@infrastructure/utilities/issue-access-token";
 import { StatusCodes } from "http-status-codes";
 import { IsNull } from "typeorm";
 import { User } from "@domain/entities";
@@ -48,17 +49,7 @@ export function getAuth(req: Request): AuthContext {
   return auth;
 }
 
-export function issueAccessToken(userId: string): string {
-  const secret = process.env.APP_JWT_SECRET;
-  if (!secret || secret.length < 32) {
-    throw new Error("APP_JWT_SECRET must contain at least 32 characters.");
-  }
-
-  return jwt.sign({ sub: userId }, secret, {
-    expiresIn: (process.env.APP_TOKEN_EXPIRES_IN ??
-      "1h") as SignOptions["expiresIn"],
-  });
-}
+export const issueAccessToken = createAccessToken;
 
 export const authenticate: RequestHandler = async (
   req: Request,

@@ -22,11 +22,7 @@ export class BaseResponseWithData<TData> extends BaseResponse {
 export class BaseResponseWithOptionalData<TData> extends BaseResponse {
   readonly data?: TData;
 
-  constructor(
-    message: string,
-    data?: TData,
-    httpStatus = StatusCodes.OK,
-  ) {
+  constructor(message: string, data?: TData, httpStatus = StatusCodes.OK) {
     super(message, httpStatus);
     this.data = data;
   }

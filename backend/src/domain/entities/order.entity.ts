@@ -56,7 +56,12 @@ export class Order {
   @Column({ name: "CANCELLED_AT", type: "timestamptz", nullable: true })
   cancelledAt!: Date | null;
 
-  @Column({ name: "CANCEL_REASON", type: "varchar", length: 500, nullable: true })
+  @Column({
+    name: "CANCEL_REASON",
+    type: "varchar",
+    length: 500,
+    nullable: true,
+  })
   cancelReason!: string | null;
 
   @CreateDateColumn({ name: "CREATED_AT", type: "timestamptz" })

@@ -7,6 +7,7 @@ interface ApplicationError extends Error {
   httpStatus?: number;
   code?: string;
   isOperational?: boolean;
+  errors?: Record<string, string[]>;
 }
 
 export const errorHandlerMiddleware: ErrorRequestHandler = (
@@ -28,20 +29,22 @@ export const errorHandlerMiddleware: ErrorRequestHandler = (
     stack: error.stack,
   });
 
+  const safeMessage =
+    isOperational || !appConfig.isProduction
+      ? error.message
+      : "An unexpected error occurred";
+
   sendErrorResponse(req, res, statusCode, {
     success: false,
-
+    message: safeMessage,
+    ...(error.errors ? { errors: error.errors } : {}),
     error: {
       code:
         error.code ??
         (statusCode === StatusCodes.INTERNAL_SERVER_ERROR
           ? "INTERNAL_SERVER_ERROR"
           : error.name),
-
-      message:
-        isOperational || !appConfig.isProduction
-          ? error.message
-          : "An unexpected error occurred",
+      message: safeMessage,
     },
 
     ...(appConfig.isProduction

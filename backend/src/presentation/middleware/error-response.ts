@@ -4,7 +4,9 @@ import { Request, Response } from "express";
 
 interface ErrorResponseBody {
   success: false;
+  message: string;
   error: { code: string; message: string };
+  errors?: Record<string, string[]>;
   stack?: string;
 }
 
@@ -76,11 +78,16 @@ export function sendErrorResponse(
 function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (character) => {
     switch (character) {
-      case "&": return "&amp;";
-      case "<": return "&lt;";
-      case ">": return "&gt;";
-      case '"': return "&quot;";
-      default: return "&#39;";
+      case "&":
+        return "&amp;";
+      case "<":
+        return "&lt;";
+      case ">":
+        return "&gt;";
+      case '"':
+        return "&quot;";
+      default:
+        return "&#39;";
     }
   });
 }

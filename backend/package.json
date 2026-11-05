@@ -6,8 +6,9 @@
   "scripts": {
     "build": "tsc && tsc-alias",
     "start": "tsx --env-file=.env src/server.ts",
-    "lint": "eslint src/server.ts src/app.ts src/presentation/endpoints/index.ts src/presentation/endpoints/shop.endpoint.ts src/presentation/middleware/shop-auth.middleware.ts src/presentation/middleware/shop-api-audit.middleware.ts src/infrastructure/config/db-context.ts src/infrastructure/config/app-config.ts src/infrastructure/scripts/bootstrap-superuser.ts",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "lint": "eslint src/application/abstract/repositories src/application/models/error/application.error.ts src/application/models/requests src/application/models/validators src/application/models/response src/application/use-cases src/domain/errors src/domain/services src/infrastructure/repositories/auth.repository.ts src/infrastructure/repositories/catalog.repository.ts src/infrastructure/repositories/order.repository.ts src/infrastructure/utilities/issue-access-token.ts src/presentation/endpoints src/presentation/openapi.ts src/presentation/middleware/rate-limit.middleware.ts tests",
+    "test": "tsx --test tests/order-domain.test.ts",
+    "typecheck": "tsc --noEmit"
   },
   "keywords": [],
   "author": "",
