@@ -12,6 +12,7 @@ export const paginationQuerySchema = z
     pageSize: positiveIntegerQuery.optional(),
     search: z.string().max(200).optional(),
     sort_by: z.string().max(50).optional(),
+    filters: z.string().max(8000).optional(),
     sort_order: z
       .string()
       .transform((value) => value.toUpperCase())

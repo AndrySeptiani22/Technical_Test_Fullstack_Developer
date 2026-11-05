@@ -18,6 +18,7 @@ import { HTTPContextAccessor } from "@infrastructure/config/http-context-accesso
 import {
   asyncRoute,
   currentUserId,
+  gridListFromRequest,
   paginationFromRequest,
   sendModelResponse,
 } from "@presentation/endpoints/endpoint-helpers";
@@ -71,6 +72,7 @@ function expectRoutes(
 test("product endpoints expose every supported route with route middleware", () => {
   expectRoutes(productsRouter, [
     ["GET", "/"],
+    ["POST", "/filter"],
     ["GET", "/:id"],
     ["POST", "/"],
     ["PUT", "/:id"],
@@ -84,6 +86,7 @@ test("product endpoints expose every supported route with route middleware", () 
 test("customer endpoints expose list, read, create, update, and delete routes", () => {
   expectRoutes(customersRouter, [
     ["GET", "/"],
+    ["POST", "/filter"],
     ["GET", "/:id"],
     ["POST", "/"],
     ["PUT", "/:id"],
@@ -95,6 +98,7 @@ test("customer endpoints expose list, read, create, update, and delete routes", 
 test("order endpoints expose create/read/list and every state transition", () => {
   expectRoutes(ordersRouter, [
     ["GET", "/"],
+    ["POST", "/filter"],
     ["POST", "/"],
     ["GET", "/:id"],
     ["POST", "/:id/pay"],
@@ -182,7 +186,9 @@ test("pagination helper applies defaults, aliases, caps, and endpoint-specific r
     search: undefined,
     sortBy: undefined,
     sortOrder: "ASC",
+    filters: [],
   });
+
   assert.deepEqual(paginationFromRequest(query({
     page: "3",
     pageSize: "200",
@@ -198,7 +204,19 @@ test("pagination helper applies defaults, aliases, caps, and endpoint-specific r
     search: "mouse",
     sortBy: "price",
     sortOrder: "DESC",
+    filters: [],
   });
+  assert.deepEqual(
+    paginationFromRequest(
+      query({
+        filters: JSON.stringify([
+          { field: "stock", operator: "greater_than", value: "5" },
+        ]),
+      }),
+      { allowedFilters: { stock: "number" } },
+    ).filters,
+    [{ field: "stock", operator: "greater_than", value: "5" }],
+  );
 
   assert.throws(
     () => paginationFromRequest(query({ sort_by: "unsupported" }), {
@@ -211,12 +229,90 @@ test("pagination helper applies defaults, aliases, caps, and endpoint-specific r
     ValidationError,
   );
   assert.throws(
+    () =>
+      paginationFromRequest(
+        query({
+          filters: JSON.stringify([
+            { field: "internal_field", operator: "equals", value: "x" },
+          ]),
+        }),
+        { allowedFilters: { stock: "number" } },
+      ),
+    ValidationError,
+  );
+  assert.throws(
     () => paginationFromRequest(query({ sort_order: "DESC" }), {
       allowSorting: false,
     }),
     ValidationError,
   );
   assert.throws(() => paginationFromRequest(query({ limit: "0" })), ValidationError);
+});
+
+test("grid list helper validates POST body pagination, sort, search, and filters", () => {
+  const request = (body: Record<string, unknown>) =>
+    ({ body }) as unknown as Request;
+  assert.deepEqual(
+    gridListFromRequest(
+      request({
+        page: 2,
+        limit: 25,
+        search: "mouse",
+        sort_by: "productName",
+        sort_order: "desc",
+        filters: [{ field: "stock", operator: "greater_than", value: "5" }],
+      }),
+      {
+        allowedSortBy: ["productName"],
+        allowSearch: true,
+        allowedFilters: { stock: "number" },
+      },
+    ),
+    {
+      page: 2,
+      limit: 25,
+      all: false,
+      search: "mouse",
+      sortBy: "productName",
+      sortOrder: "DESC",
+      filters: [{ field: "stock", operator: "greater_than", value: "5" }],
+    },
+  );
+  assert.deepEqual(gridListFromRequest(request({}), {}), {
+    page: 1,
+    limit: 10,
+    all: false,
+    search: undefined,
+    sortBy: undefined,
+    sortOrder: "ASC",
+    filters: [],
+  });
+  assert.deepEqual(gridListFromRequest(request({ limit: "all" }), {}), {
+    page: 1,
+    limit: 100,
+    all: true,
+    search: undefined,
+    sortBy: undefined,
+    sortOrder: "ASC",
+    filters: [],
+  });
+  assert.throws(
+    () =>
+      gridListFromRequest(
+        request({
+          filters: [{ field: "unknown", operator: "equals", value: "x" }],
+        }),
+        { allowedFilters: { stock: "number" } },
+      ),
+    ValidationError,
+  );
+  assert.throws(
+    () =>
+      gridListFromRequest(request({ sort_by: "unsupported" }), {
+        allowedSortBy: ["productName"],
+      }),
+    ValidationError,
+  );
 });
 
 test("current-user helper distinguishes optional and required context", () => {

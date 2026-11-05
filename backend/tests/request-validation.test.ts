@@ -15,6 +15,8 @@ import {
   refreshRequestSchema,
 } from "@application/models/validators/auth.validator";
 import { paginationQuerySchema } from "@application/models/validators/common.validator";
+import { parseListFilters } from "@application/models/validators/list-filter.validator";
+import { ValidationError } from "@application/models/error/application.error";
 import {
   emptyRequestSchema,
   orderCancelRequestSchema,
@@ -214,6 +216,59 @@ test("pagination defaults, aliases, limits, and strict query keys are enforced",
   }
 });
 
+test("grid filters validate fields, operators, value types, and unary operators", () => {
+  const allowedFields = {
+    name: "text",
+    status: "text",
+    stock: "number",
+    created: "date",
+  } as const;
+  assert.deepEqual(
+    parseListFilters(
+      JSON.stringify([
+        { field: "name", operator: "contains", value: "mouse" },
+        { field: "stock", operator: "greater_or_equal", value: "5" },
+        { field: "created", operator: "less_than", value: "2026-01-01" },
+        { field: "name", operator: "is_empty" },
+        {
+          field: "status",
+          operator: "in",
+          values: ["PENDING", "PAID"],
+        },
+      ]),
+      allowedFields,
+      { status: ["PENDING", "PAID", "SHIPPED", "COMPLETED", "CANCELLED"] },
+    ),
+    [
+      { field: "name", operator: "contains", value: "mouse" },
+      { field: "stock", operator: "greater_or_equal", value: "5" },
+      { field: "created", operator: "less_than", value: "2026-01-01" },
+      { field: "name", operator: "is_empty" },
+      { field: "status", operator: "in", values: ["PENDING", "PAID"] },
+    ],
+  );
+  for (const filters of [
+    "not-json",
+    JSON.stringify([{ field: "unknown", operator: "equals", value: "x" }]),
+    JSON.stringify([{ field: "stock", operator: "contains", value: "5" }]),
+    JSON.stringify([{ field: "stock", operator: "equals", value: "NaN" }]),
+    JSON.stringify([{ field: "created", operator: "equals", value: "tomorrow" }]),
+    JSON.stringify([{ field: "name", operator: "equals" }]),
+    JSON.stringify([{ field: "name", operator: "is_empty", value: "x" }]),
+    JSON.stringify([{ field: "status", operator: "in", values: ["UNKNOWN"] }]),
+    JSON.stringify([{ field: "status", operator: "in", values: ["PAID", "PAID"] }]),
+    JSON.stringify([{ field: "stock", operator: "in", values: ["5"] }]),
+  ]) {
+    assert.throws(
+      () =>
+        parseListFilters(filters, allowedFields, {
+          status: ["PENDING", "PAID", "SHIPPED", "COMPLETED", "CANCELLED"],
+        }),
+      ValidationError,
+    );
+  }
+});
+
 test("order IDs and list filters validate status, UUID, dates, and ordering", () => {
   valid(orderIdParamsSchema, { id: "9223372036854775807" });
   for (const id of ["0", "01", "-1", "1.0", "9223372036854775808"]) {
@@ -222,12 +277,18 @@ test("order IDs and list filters validate status, UUID, dates, and ordering", ()
 
   assert.deepEqual(orderListQuerySchema.parse({
     status: "pending",
+    search: "AZ-",
+    sort_by: "totalAmount",
+    sort_order: "asc",
     customer_id: uuid,
     from: "2026-01-01",
     to: "2026-01-31",
   }), {
     page: 1,
+    sort_by: "totalAmount",
+    sort_order: "ASC",
     status: "PENDING",
+    search: "AZ-",
     customer_id: uuid,
     from: "2026-01-01",
     to: "2026-01-31",
@@ -236,8 +297,9 @@ test("order IDs and list filters validate status, UUID, dates, and ordering", ()
     { status: "unknown" },
     { customer_id: "not-a-uuid" },
     { from: "2026-02-01", to: "2026-01-31" },
-    { search: "not-supported" },
+    { search: "s".repeat(201) },
     { sort_by: "not-supported" },
+    { sort_order: "sideways" },
   ]) {
     invalid(orderListQuerySchema, query);
   }

@@ -7,18 +7,27 @@ A production-shaped order management console built with **Vue 3 + TypeScript + V
 ```
 src/
 ├── domain/                 # Entities & repository interfaces (pure TS)
-│   ├── entities.ts         # Product, Customer, Order, OrderStatus, …
-│   └── repositories.ts     # IAuthRepository, IProductRepository, …
-├── application/            # Use cases (framework-free orchestration)
-│   └── use-cases.ts
+│   ├── entities/           # Auth, customer, order, product, report, and shared types
+│   └── repositories/       # Per-domain repository contracts and list query types
+├── application/            # Use cases and application-level constants
+│   ├── constants/
+│   │   └── order.constants.ts
+│   └── use-cases/          # Auth, customer, order, product, and report modules
 ├── infrastructure/         # Concrete adapters
 │   ├── http/
 │   │   └── client.ts       # Axios instance + interceptors + bearer token
-│   └── repositories/       # Axios-based repo implementations + container
+│   └── repositories/       # Per-domain Axios adapters, query helpers, and container
 └── presentation/           # Vue views, components, stores, router
-    ├── views/              # Login, Dashboard, Products, Customers, Orders, Reports
-    ├── components/ui/      # Button, Input, Card, Modal, StatusBadge, Toaster
-    ├── stores/             # Pinia store (auth)
+    ├── views/              # Feature pages and feature-specific components
+    │   ├── product/        # index.vue plus page/detail.vue and component/grid.vue
+    │   ├── customer/       # index.vue
+    │   ├── order/          # index.vue plus page/create.vue and page/detail.vue
+    │   ├── dashboard/      # index.vue
+    │   ├── report/         # index.vue
+    │   ├── login/          # index.vue
+    │   └── layout/         # index.vue
+    ├── components/ui/      # Shared Button, Input, Card, Modal, StatusBadge, Toaster
+    ├── stores/             # Pinia stores for auth and feature page data
     ├── lib/                # utils (cn, formatIDR, …), toast helper
     └── router.ts
 ```
@@ -26,18 +35,18 @@ src/
 ## Features
 
 - **Auth**: JWT-style bearer tokens, refresh token rotation, role-aware navigation.
-- **Products**: CRUD, pagination, search, sort, soft-delete, stock adjustments with movement ledger.
-- **Customers**: CRUD, pagination, search.
-- **Orders**: Multi-item creation with server-side price snapshot, idempotency-key header, status timeline, state machine (PENDING → PAID → SHIPPED → COMPLETED, or CANCELLED with stock restore).
+- **Products**: CRUD, pagination (5/10/20/all rows), search, sort, soft-delete, stock adjustments with movement ledger.
+- **Customers**: CRUD, pagination (5/10/20/all rows), search.
+- **Orders**: Multi-item creation with server-side price snapshot, idempotency-key header, status timeline, state machine (PENDING → PAID → SHIPPED → COMPLETED, or CANCELLED with stock restore), and selectable grid page sizes.
 - **Dashboard & Reports**: Monthly summary, sales over time (day/month), top products.
 - **Permissions**: Admin (full) vs Staff (no product writes / no reports).
 
 ## Demo credentials
 
-| Role  | Email             | Password |
-| ----- | ----------------- | -------- |
-| Admin | admin@example.com | admin123 |
-| Staff | staff@example.com | staff123 |
+| Role  | Email              | Password      |
+| ----- | ------------------ | ------------- |
+| Admin | admin@azatech.id   | Admin#12345   |
+| Staff | cashier@azatech.id | Cashier#12345 |
 
 ## Run
 
@@ -50,4 +59,6 @@ Start the backend separately (`backend` folder, `npm start`). Vite proxies `/api
 
 ## API contract
 
-The Axios repositories call the backend's auth, products, stock, customers, orders, dashboard, reports, and invoice endpoints. Access and refresh tokens are stored in browser local storage after login.
+The Axios repositories call the backend's auth, products, stock, customers, orders, dashboard, reports, and invoice endpoints. Grid filters are sent as JSON request bodies with POST to the products, customers, and orders `/filter` endpoints. Access and refresh tokens are stored in browser local storage after login.
+
+Repositories are split by domain (`auth`, `product`, `customer`, `order`, and `dashboard`) and composed through `infrastructure/repositories/index.ts`. Feature Pinia stores own list/report query state and invoke use cases so view components stay focused on rendering and interaction.

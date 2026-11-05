@@ -4,6 +4,7 @@ import type {
   CreateOrderInput,
   OrderTransitionInput,
 } from "@application/abstract/repositories/iorder.repository";
+import type { ListFilter } from "@application/abstract/repositories/icatalog.repository";
 
 export class OrderUseCase {
   constructor(private readonly orderRepository: IOrderRepository) {}
@@ -23,10 +24,15 @@ export class OrderUseCase {
   list(query: {
     page: number;
     limit: number;
+    all?: boolean;
+    sortBy?: string;
+    sortOrder?: "ASC" | "DESC";
+    search?: string;
     status?: string;
     customerId?: string;
     from?: string;
     to?: string;
+    filters?: ListFilter[];
   }) {
     return this.orderRepository.list(query);
   }

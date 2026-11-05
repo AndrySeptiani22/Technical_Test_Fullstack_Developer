@@ -14,13 +14,17 @@ function bootstrap() {
 
   app.use(pinia);
 
-  // Hydrate auth before router installs guards.
   useAuthStore().hydrate();
 
   app.use(VueQueryPlugin, {
     queryClientConfig: {
       defaultOptions: {
-        queries: { staleTime: 30_000, retry: 1, refetchOnWindowFocus: false },
+        queries: {
+          staleTime: 30_000,
+          retry: 1,
+          refetchOnWindowFocus: true,
+          refetchOnReconnect: true,
+        },
       },
     },
   });

@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted } from "vue";
 const emit = defineEmits<{ (e: "close"): void }>();
-defineProps<{ title?: string }>();
+const props = withDefaults(
+  defineProps<{ title?: string; size?: "default" | "wide" }>(),
+  { size: "default" },
+);
 function onKey(e: KeyboardEvent) {
   if (e.key === "Escape") emit("close");
 }
@@ -20,7 +23,8 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
         @click="emit('close')"
       ></div>
       <div
-        class="relative bg-card w-full max-w-lg rounded-xl shadow-2xl border border-border overflow-hidden grain"
+        class="relative bg-card w-full rounded-xl shadow-2xl border border-border overflow-hidden grain"
+        :class="props.size === 'wide' ? 'max-w-5xl' : 'max-w-lg'"
         data-testid="modal-content"
       >
         <div

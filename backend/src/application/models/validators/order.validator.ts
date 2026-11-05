@@ -21,8 +21,16 @@ export const orderIdParamsSchema = z.object({
 });
 
 export const orderListQuerySchema = paginationQuerySchema
-  .omit({ search: true, sort_by: true, sort_order: true })
+  .omit({ sort_by: true, sort_order: true })
   .extend({
+    sort_by: z
+      .enum(["orderNumber", "orderDate", "status", "totalAmount", "itemsCount"])
+      .optional(),
+    sort_order: z
+      .string()
+      .transform((value) => value.toUpperCase())
+      .pipe(z.enum(["ASC", "DESC"]))
+      .optional(),
     status: z
       .string()
       .transform((value) => value.toUpperCase())

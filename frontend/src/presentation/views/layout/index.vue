@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { RouterLink, RouterView, useRoute, useRouter } from "vue-router";
-import { useAuthStore } from "../stores/auth.store";
+import { useAuthStore } from "@/presentation/stores/auth.store";
 import {
   LayoutDashboard,
   Package,

@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { useQuery } from "@tanstack/vue-query";
-import { useCases } from "@/application/use-cases";
-import Card from "../components/ui/card.vue";
-import { formatIDR } from "../lib/utils";
+import { storeToRefs } from "pinia";
+import { useDashboardStore } from "@/presentation/stores/dashboard.store";
+import Card from "@/presentation/components/ui/card.vue";
+import { formatIDR } from "@/presentation/lib/utils";
 import {
   Package,
   ShoppingCart,
@@ -14,10 +14,8 @@ import {
 import { computed } from "vue";
 import { RouterLink } from "vue-router";
 
-const { data, isLoading } = useQuery({
-  queryKey: ["dashboard-summary"],
-  queryFn: async () => (await useCases.dashboardSummary()).data,
-});
+const dashboardStore = useDashboardStore();
+const { summary: data, isLoading } = storeToRefs(dashboardStore);
 
 const cards = computed(() => {
   const s = data.value;

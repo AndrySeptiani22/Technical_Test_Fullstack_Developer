@@ -3,6 +3,7 @@ import type {
   ShopRole,
 } from "@domain/services/order-state-machine";
 import type { Order } from "@domain/entities/order.entity";
+import type { ListFilter } from "./icatalog.repository";
 
 export interface CreateOrderInput {
   userId: string;
@@ -31,9 +32,14 @@ export interface IOrderRepository {
   list(query: {
     page: number;
     limit: number;
+    all?: boolean;
+    sortBy?: string;
+    sortOrder?: "ASC" | "DESC";
+    search?: string;
     status?: string;
     customerId?: string;
     from?: string;
     to?: string;
+    filters?: ListFilter[];
   }): Promise<{ items: Order[]; meta: Record<string, number> }>;
 }

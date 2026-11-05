@@ -2,17 +2,37 @@
 import { computed, ref } from "vue";
 import { useRoute, RouterLink } from "vue-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/vue-query";
-import { useCases } from "@/application/use-cases";
-import { useAuthStore } from "../stores/auth.store";
-import Card from "../components/ui/card.vue";
-import Button from "../components/ui/button.vue";
-import Input from "../components/ui/input.vue";
-import Modal from "../components/ui/modal.vue";
-import StatusBadge from "../components/ui/status-badge.vue";
-import { formatIDR, formatDateTime } from "../lib/utils";
-import { toast } from "../lib/toast";
-import { canTransition, type OrderStatus } from "@/domain/entities";
+import {
+  cancelOrder,
+  completeOrder,
+  getInvoice,
+  getOrder,
+  payOrder,
+  shipOrder,
+} from "@/application/use-cases/order.use-case";
+import { getCustomer } from "@/application/use-cases/customer.use-case";
+import { listProducts } from "@/application/use-cases/product.use-case";
+import { useAuthStore } from "@/presentation/stores/auth.store";
+import Card from "@/presentation/components/ui/card.vue";
+import Button from "@/presentation/components/ui/button.vue";
+import Input from "@/presentation/components/ui/input.vue";
+import Modal from "@/presentation/components/ui/modal.vue";
+import ConfirmDialog from "@/presentation/components/ui/confirm-dialog.vue";
+import StatusBadge from "@/presentation/components/ui/status-badge.vue";
+import { formatIDR, formatDateTime } from "@/presentation/lib/utils";
+import { toast } from "@/presentation/lib/toast";
+import {
+  type OrderStatus,
+} from "@/domain/entities";
+import {
+  canTransition,
+  ORDER_STATUS,
+  ORDER_STATUS_ACTION,
+  type OrderStatusAction,
+} from "@/application/constants/order.constants";
 import { ArrowLeft, FileText } from "lucide-vue-next";
+import { cancelOrderFormSchema } from "@/application/validation/request-schemas";
+import { fieldErrors } from "@/presentation/lib/form-validation";
 
 const route = useRoute();
 const auth = useAuthStore();
@@ -21,18 +41,18 @@ const id = computed(() => route.params.id as string);
 
 const order = useQuery({
   queryKey: ["order", id],
-  queryFn: async () => (await useCases.getOrder(id.value)).data,
+  queryFn: async () => (await getOrder(id.value)).data,
 });
 const customer = useQuery({
   enabled: computed(() => !!order.data.value?.customer_id),
   queryKey: ["customer", computed(() => order.data.value?.customer_id)],
   queryFn: async () =>
-    (await useCases.getCustomer(order.data.value!.customer_id)).data,
+    (await getCustomer(order.data.value!.customer_id)).data,
 });
 const products = useQuery({
   queryKey: ["products-all"],
   queryFn: async () =>
-    (await useCases.listProducts({ page: 1, limit: 100 })).data || [],
+    (await listProducts({ page: 1, limit: 100 })).data || [],
 });
 
 function productName(pid: string) {
@@ -41,6 +61,13 @@ function productName(pid: string) {
 
 const showCancel = ref(false);
 const cancelReason = ref("");
+const cancelErrors = ref<Record<string, string>>({});
+const pendingStatusAction = ref<OrderStatusAction | null>(null);
+const showInvoice = ref(false);
+const invoiceHtml = ref("");
+const invoiceLoading = ref(false);
+const invoiceError = ref("");
+const invoiceFrame = ref<HTMLIFrameElement | null>(null);
 
 function invalidate() {
   for (const key of [
@@ -58,31 +85,34 @@ function invalidate() {
 }
 
 const pay = useMutation({
-  mutationFn: () => useCases.payOrder(id.value),
+  mutationFn: () => payOrder(id.value),
   onSuccess: () => {
-    toast.success("Marked PAID");
+    toast.success(`Marked ${ORDER_STATUS.PAID}`);
+    pendingStatusAction.value = null;
     invalidate();
   },
   onError: (e: any) => toast.error(e?.message),
 });
 const ship = useMutation({
-  mutationFn: () => useCases.shipOrder(id.value),
+  mutationFn: () => shipOrder(id.value),
   onSuccess: () => {
-    toast.success("Marked SHIPPED");
+    toast.success(`Marked ${ORDER_STATUS.SHIPPED}`);
+    pendingStatusAction.value = null;
     invalidate();
   },
   onError: (e: any) => toast.error(e?.message),
 });
 const complete = useMutation({
-  mutationFn: () => useCases.completeOrder(id.value),
+  mutationFn: () => completeOrder(id.value),
   onSuccess: () => {
-    toast.success("Marked COMPLETED");
+    toast.success(`Marked ${ORDER_STATUS.COMPLETED}`);
+    pendingStatusAction.value = null;
     invalidate();
   },
   onError: (e: any) => toast.error(e?.message),
 });
 const cancel = useMutation({
-  mutationFn: () => useCases.cancelOrder(id.value, cancelReason.value),
+  mutationFn: (reason: string) => cancelOrder(id.value, reason),
   onSuccess: () => {
     toast.success("Order cancelled");
     showCancel.value = false;
@@ -91,22 +121,83 @@ const cancel = useMutation({
   onError: (e: any) => toast.error(e?.message),
 });
 
+function requestCancel() {
+  const result = cancelOrderFormSchema.safeParse({
+    cancel_reason: cancelReason.value,
+  });
+  if (!result.success) {
+    cancelErrors.value = fieldErrors(result.error);
+    return;
+  }
+  cancelErrors.value = {};
+  cancel.mutate(result.data.cancel_reason);
+}
+
 function can(to: OrderStatus) {
   const s = order.data.value?.status;
   return s ? canTransition(s, to) : false;
 }
 
-async function openInvoice() {
-  try {
-    const html = await useCases.getInvoice(id.value);
-    const w = window.open("", "_blank");
-    if (w) {
-      w.document.write(html);
-      w.document.close();
-    }
-  } catch (e: any) {
-    toast.error("Failed to load invoice");
+const statusConfirmation = computed(() => {
+  switch (pendingStatusAction.value) {
+    case ORDER_STATUS_ACTION.PAY:
+      return {
+        title: "Confirm payment",
+        message: "Mark this order as paid?",
+        confirmLabel: "Mark paid",
+        loading: pay.isPending.value,
+      };
+    case ORDER_STATUS_ACTION.SHIP:
+      return {
+        title: "Confirm shipment",
+        message: "Mark this order as shipped?",
+        confirmLabel: "Mark shipped",
+        loading: ship.isPending.value,
+      };
+    case ORDER_STATUS_ACTION.COMPLETE:
+      return {
+        title: "Confirm completion",
+        message: "Mark this order as completed?",
+        confirmLabel: "Complete order",
+        loading: complete.isPending.value,
+      };
+    default:
+      return null;
   }
+});
+
+function confirmStatusUpdate() {
+  if (pendingStatusAction.value === ORDER_STATUS_ACTION.PAY) pay.mutate();
+  else if (pendingStatusAction.value === ORDER_STATUS_ACTION.SHIP) ship.mutate();
+  else if (pendingStatusAction.value === ORDER_STATUS_ACTION.COMPLETE)
+    complete.mutate();
+}
+
+async function openInvoice() {
+  showInvoice.value = true;
+  invoiceLoading.value = true;
+  invoiceError.value = "";
+  invoiceHtml.value = "";
+  try {
+    invoiceHtml.value = await getInvoice(id.value);
+  } catch (error: unknown) {
+    invoiceError.value =
+      error instanceof Error
+        ? error.message
+        : error &&
+            typeof error === "object" &&
+            "message" in error &&
+            typeof error.message === "string"
+          ? error.message
+          : "Failed to load invoice.";
+    toast.error(invoiceError.value);
+  } finally {
+    invoiceLoading.value = false;
+  }
+}
+
+function printInvoice() {
+  invoiceFrame.value?.contentWindow?.print();
 }
 </script>
 
@@ -139,30 +230,31 @@ async function openInvoice() {
 
       <div class="flex flex-wrap gap-2" data-testid="order-actions">
         <Button
-          v-if="auth.hasPermission('orders.pay') && can('PAID')"
-          @click="pay.mutate()"
-          :loading="pay.isPending.value"
+          v-if="auth.hasPermission('orders.pay') && can(ORDER_STATUS.PAID)"
+          @click="pendingStatusAction = ORDER_STATUS_ACTION.PAY"
           variant="default"
           data-testid="pay-order-btn"
           >Mark Paid</Button
         >
         <Button
-          v-if="auth.hasPermission('orders.ship') && can('SHIPPED')"
-          @click="ship.mutate()"
-          :loading="ship.isPending.value"
+          v-if="auth.hasPermission('orders.ship') && can(ORDER_STATUS.SHIPPED)"
+          @click="pendingStatusAction = ORDER_STATUS_ACTION.SHIP"
           data-testid="ship-order-btn"
           >Ship</Button
         >
         <Button
-          v-if="auth.hasPermission('orders.complete') && can('COMPLETED')"
-          @click="complete.mutate()"
-          :loading="complete.isPending.value"
+          v-if="
+            auth.hasPermission('orders.complete') && can(ORDER_STATUS.COMPLETED)
+          "
+          @click="pendingStatusAction = ORDER_STATUS_ACTION.COMPLETE"
           variant="accent"
           data-testid="complete-order-btn"
           >Complete</Button
         >
         <Button
-          v-if="auth.hasPermission('orders.cancel') && can('CANCELLED')"
+          v-if="
+            auth.hasPermission('orders.cancel') && can(ORDER_STATUS.CANCELLED)
+          "
           @click="showCancel = true"
           variant="destructive"
           data-testid="cancel-order-btn"
@@ -170,6 +262,7 @@ async function openInvoice() {
         >
         <Button
           v-if="auth.hasPermission('orders.invoice')"
+          :disabled="order.data.value.status !== ORDER_STATUS.PAID"
           variant="outline"
           @click="openInvoice"
           data-testid="invoice-btn"
@@ -287,7 +380,7 @@ async function openInvoice() {
     </div>
 
     <Modal v-if="showCancel" title="Cancel order" @close="showCancel = false">
-      <form class="space-y-4" @submit.prevent="cancel.mutate()">
+      <form class="space-y-4" novalidate @submit.prevent="requestCancel">
         <p class="text-sm text-muted-foreground">
           Cancelling will restore stock for all items. Please provide a reason.
         </p>
@@ -295,11 +388,17 @@ async function openInvoice() {
           v-model="cancelReason"
           placeholder="Reason for cancellation…"
           required
+          maxlength="500"
+          :aria-invalid="!!cancelErrors.cancel_reason"
+          @update:model-value="cancelErrors.cancel_reason = ''"
           data-testid="cancel-reason-input"
         />
+        <p v-if="cancelErrors.cancel_reason" class="text-xs text-destructive">
+          {{ cancelErrors.cancel_reason }}
+        </p>
         <div class="flex justify-end gap-2">
           <Button type="button" variant="ghost" @click="showCancel = false"
-            >Back</Button
+            >Close</Button
           >
           <Button
             type="submit"
@@ -310,6 +409,66 @@ async function openInvoice() {
           >
         </div>
       </form>
+    </Modal>
+
+    <ConfirmDialog
+      v-if="statusConfirmation"
+      :title="statusConfirmation.title"
+      :message="statusConfirmation.message"
+      :confirm-label="statusConfirmation.confirmLabel"
+      :loading="statusConfirmation.loading"
+      @cancel="pendingStatusAction = null"
+      @confirm="confirmStatusUpdate"
+    />
+
+    <Modal
+      v-if="showInvoice"
+      :title="`Invoice ${order.data.value.order_number}`"
+      size="wide"
+      @close="showInvoice = false"
+    >
+      <div class="space-y-4">
+        <div class="flex justify-end gap-2">
+          <Button
+            variant="outline"
+            :disabled="invoiceLoading || !invoiceHtml"
+            data-testid="print-invoice-btn"
+            @click="printInvoice"
+          >
+            <FileText class="w-4 h-4" /> Print invoice
+          </Button>
+          <Button
+            variant="ghost"
+            data-testid="close-invoice-btn"
+            @click="showInvoice = false"
+          >
+            Close
+          </Button>
+        </div>
+        <div
+          v-if="invoiceLoading"
+          class="py-12 text-center text-sm text-muted-foreground"
+          data-testid="invoice-loading"
+        >
+          Loading invoice…
+        </div>
+        <div
+          v-else-if="invoiceError"
+          class="py-12 text-center text-sm text-destructive"
+          data-testid="invoice-error"
+        >
+          {{ invoiceError }}
+        </div>
+        <iframe
+          v-else
+          ref="invoiceFrame"
+          :srcdoc="invoiceHtml"
+          title="Order invoice"
+          sandbox="allow-same-origin allow-modals"
+          class="h-[65vh] w-full rounded-md border border-border bg-white"
+          data-testid="invoice-preview"
+        />
+      </div>
     </Modal>
   </div>
 </template>

@@ -24,8 +24,25 @@ import {
 import { resolveOrderTransition } from "@domain/services/order-state-machine";
 import { calculateOrderTotal } from "@domain/services/order-calculation";
 import { serializeOrder } from "@application/models/response/order.response";
+import { applyListFilters } from "./list-filters";
+import type { FilterFieldMap } from "./list-filters";
+import type { ListFilter } from "@application/abstract/repositories/icatalog.repository";
 
 const IDEMPOTENCY_TTL_HOURS = 24;
+const orderFilterFields: FilterFieldMap = {
+  order_number: { expression: "order.orderNumber", kind: "text" },
+  order_date: {
+    expression: "(order.orderDate AT TIME ZONE 'Asia/Jakarta')::date",
+    kind: "date",
+  },
+  status: { expression: "order.status", kind: "text" },
+  total_amount: { expression: "order.totalAmount", kind: "number" },
+  items_count: {
+    expression:
+      '(SELECT COUNT(*) FROM "ORDER_ITEMS" filter_order_item WHERE filter_order_item."ORDER_ID" = "order"."ORDER_ID")',
+    kind: "number",
+  },
+};
 
 function jakartaDatePart(date: Date): string {
   const parts = new Intl.DateTimeFormat("en-US", {
@@ -449,16 +466,26 @@ export class OrderRepository implements IOrderRepository {
   async list(query: {
     page: number;
     limit: number;
+    all?: boolean;
+    sortBy?: string;
+    sortOrder?: "ASC" | "DESC";
+    search?: string;
     status?: string;
     customerId?: string;
     from?: string;
     to?: string;
+    filters?: ListFilter[];
   }) {
     const qb = this.dataSource
       .getRepository(Order)
       .createQueryBuilder("order")
       .leftJoinAndSelect("order.items", "items")
       .leftJoinAndSelect("order.customer", "customer");
+    if (query.search?.trim()) {
+      qb.andWhere("LOWER(order.orderNumber) LIKE LOWER(:search)", {
+        search: `%${query.search.trim()}%`,
+      });
+    }
     if (query.status)
       qb.andWhere("order.status = :status", { status: query.status });
     if (query.customerId)
@@ -475,19 +502,34 @@ export class OrderRepository implements IOrderRepository {
         "order.orderDate < ((CAST(:to AS date) + interval '1 day')::timestamp AT TIME ZONE 'Asia/Jakarta')",
         { to: query.to },
       );
-    const [items, total] = await qb
-      .orderBy("order.orderDate", "DESC")
-      .addOrderBy("order.orderId", "DESC")
-      .skip((query.page - 1) * query.limit)
-      .take(query.limit)
-      .getManyAndCount();
+    applyListFilters(qb, query.filters, orderFilterFields);
+    const sortExpressions: Record<string, string> = {
+      orderNumber: "order.orderNumber",
+      orderDate: "order.orderDate",
+      status: "order.status",
+      totalAmount: "order.totalAmount",
+      itemsCount:
+        '(SELECT COUNT(*) FROM "ORDER_ITEMS" sort_order_item WHERE sort_order_item."ORDER_ID" = "order"."ORDER_ID")',
+    };
+    const sortBy =
+      query.sortBy && sortExpressions[query.sortBy]
+        ? query.sortBy
+        : "orderDate";
+    const sortOrder = query.sortOrder ?? "DESC";
+    qb.orderBy(sortExpressions[sortBy], sortOrder).addOrderBy(
+      "order.orderId",
+      sortOrder,
+    );
+    if (!query.all)
+      qb.skip((query.page - 1) * query.limit).take(query.limit);
+    const [items, total] = await qb.getManyAndCount();
     return {
       items,
       meta: {
         page: query.page,
-        per_page: query.limit,
+        per_page: query.all ? total : query.limit,
         total,
-        total_pages: Math.ceil(total / query.limit),
+        total_pages: query.all ? (total > 0 ? 1 : 0) : Math.ceil(total / query.limit),
       },
     };
   }

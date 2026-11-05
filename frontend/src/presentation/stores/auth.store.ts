@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
-import { useCases } from "@/application/use-cases";
+import { loginUser, logoutUser } from "@/application/use-cases/auth.use-case";
 import { setStoredToken } from "@/infrastructure/http/client";
 import type { User } from "@/domain/entities";
 
@@ -36,7 +36,7 @@ export const useAuthStore = defineStore("auth", () => {
     loading.value = true;
     errorMessage.value = null;
     try {
-      const res = await useCases.loginUser(email, password);
+      const res = await loginUser(email, password);
       if (!res.success || !res.data) {
         errorMessage.value = res.message || "Login failed";
         return false;
@@ -57,7 +57,7 @@ export const useAuthStore = defineStore("auth", () => {
 
   async function logout() {
     try {
-      await useCases.logoutUser(refreshToken.value || undefined);
+      await logoutUser(refreshToken.value || undefined);
     } catch (err: any) {
       console.error("Logout error:", err);
     }

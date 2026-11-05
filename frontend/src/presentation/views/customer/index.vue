@@ -1,34 +1,49 @@
 <script setup lang="ts">
-import { ref, computed } from "vue";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/vue-query";
-import { useCases } from "@/application/use-cases";
-import { useAuthStore } from "../stores/auth.store";
-import Button from "../components/ui/button.vue";
-import Input from "../components/ui/input.vue";
-import Card from "../components/ui/card.vue";
-import Modal from "../components/ui/modal.vue";
-import { toast } from "../lib/toast";
+import { ref } from "vue";
+import { useMutation, useQueryClient } from "@tanstack/vue-query";
+import { storeToRefs } from "pinia";
+import { useAuthStore } from "@/presentation/stores/auth.store";
+import { useCustomerStore } from "@/presentation/stores/customer.store";
+import Button from "@/presentation/components/ui/button.vue";
+import Input from "@/presentation/components/ui/input.vue";
+import Card from "@/presentation/components/ui/card.vue";
+import Modal from "@/presentation/components/ui/modal.vue";
+import ConfirmDialog from "@/presentation/components/ui/confirm-dialog.vue";
+import GridFilters, {
+  type GridFilterField,
+} from "@/presentation/components/ui/grid-filters.vue";
+import GridPagination from "@/presentation/components/ui/grid-pagination.vue";
+import { toast } from "@/presentation/lib/toast";
 import { Plus, Pencil, Trash2, Search } from "lucide-vue-next";
+import { customerFormSchema } from "@/application/validation/request-schemas";
+import { fieldErrors } from "@/presentation/lib/form-validation";
 
 const auth = useAuthStore();
+const customerStore = useCustomerStore();
 const qc = useQueryClient();
-const page = ref(1);
-const search = ref("");
-
-const query = useQuery({
-  queryKey: ["customers", page, search],
-  queryFn: async () =>
-    await useCases.listCustomers({
-      page: page.value,
-      limit: 10,
-      search: search.value,
-    }),
-});
-const items = computed(() => query.data.value?.data || []);
-const meta = computed(() => query.data.value?.meta);
+const {
+  page,
+  pageSize,
+  search,
+  sortBy,
+  sortOrder,
+  filters,
+  items,
+  meta,
+  isLoading,
+} = storeToRefs(customerStore);
+const filterFields: GridFilterField[] = [
+  { key: "customer_name", label: "Name", kind: "text", sortBy: "customerName" },
+  { key: "email", label: "Email", kind: "text", sortBy: "email" },
+  { key: "phone", label: "Phone", kind: "text" },
+  { key: "customer_address", label: "Address", kind: "text" },
+];
 
 const showForm = ref(false);
 const editing = ref<any>(null);
+const showUpdateConfirm = ref(false);
+const deleting = ref<any>(null);
+const formErrors = ref<Record<string, string>>({});
 const form = ref<any>({
   customer_name: "",
   customer_address: "",
@@ -40,6 +55,8 @@ const form = ref<any>({
 
 function openCreate() {
   editing.value = null;
+  formErrors.value = {};
+  showUpdateConfirm.value = false;
   form.value = {
     customer_name: "",
     customer_address: "",
@@ -51,9 +68,12 @@ function openCreate() {
   showForm.value = true;
 }
 function openEdit(c: any) {
+  formErrors.value = {};
+  showUpdateConfirm.value = false;
   editing.value = c;
   form.value = {
-    ...c,
+    customer_name: c.customer_name,
+    customer_address: c.customer_address,
     gender: c.gender || "",
     birth_date: c.birth_date || "",
     phone: c.phone || "",
@@ -64,39 +84,63 @@ function openEdit(c: any) {
 
 const save = useMutation({
   mutationFn: async () => {
-    const payload: any = { ...form.value };
-    for (const k of Object.keys(payload))
-      if (payload[k] === "") payload[k] = null;
-    payload.customer_name = form.value.customer_name;
-    payload.customer_address = form.value.customer_address;
+    const result = customerFormSchema.safeParse(form.value);
+    if (!result.success) throw new Error("Please correct the customer form.");
+    const payload = {
+      customer_name: result.data.customer_name,
+      customer_address: result.data.customer_address,
+      gender: result.data.gender || null,
+      birth_date: result.data.birth_date || null,
+      phone: result.data.phone || null,
+      email: result.data.email || null,
+    };
     if (editing.value)
-      return useCases.updateCustomer(editing.value.id, payload);
-    return useCases.createCustomer(payload);
+      return customerStore.updateCustomer(editing.value.id, payload);
+    return customerStore.createCustomer(payload);
   },
   onSuccess: (r) => {
     toast.success(r.message || "Saved");
     showForm.value = false;
+    showUpdateConfirm.value = false;
     qc.invalidateQueries({ queryKey: ["customers"] });
   },
   onError: (e: any) => toast.error(e?.message || "Failed"),
 });
 
+function requestSave() {
+  const result = customerFormSchema.safeParse(form.value);
+  if (!result.success) {
+    formErrors.value = fieldErrors(result.error);
+    return;
+  }
+  formErrors.value = {};
+  if (editing.value) {
+    showUpdateConfirm.value = true;
+    return;
+  }
+  save.mutate();
+}
+
 const del = useMutation({
-  mutationFn: (id: string) => useCases.deleteCustomer(id),
+  mutationFn: (id: string) => customerStore.deleteCustomer(id),
   onSuccess: () => {
     toast.success("Customer deleted");
+    deleting.value = null;
     qc.invalidateQueries({ queryKey: ["customers"] });
   },
   onError: (e: any) => toast.error(e?.message || "Failed"),
 });
 function confirmDelete(c: any) {
-  if (window.confirm(`Delete ${c.customer_name}?`)) del.mutate(c.id);
+  deleting.value = c;
+}
+function deleteCustomer() {
+  if (deleting.value) del.mutate(deleting.value.id);
 }
 </script>
 
 <template>
   <div>
-    <div class="flex items-end justify-between mb-8">
+    <div class="mb-6">
       <div>
         <div
           class="text-xs uppercase tracking-[0.18em] text-muted-foreground font-medium mb-1"
@@ -107,46 +151,50 @@ function confirmDelete(c: any) {
           Customers
         </h1>
       </div>
-      <Button
-        v-if="auth.hasPermission('customers.create')"
-        variant="accent"
-        @click="openCreate"
-        data-testid="create-customer-btn"
-      >
-        <Plus class="w-4 h-4" /> New customer
-      </Button>
     </div>
 
-    <Card class="p-4 mb-4">
-      <div class="relative">
+    <Card class="p-4 mb-4 flex items-center gap-3">
+      <div class="relative min-w-0 flex-1">
         <Search
           class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
         />
         <Input
           v-model="search"
+          maxlength="200"
           placeholder="Search by name or email…"
           class="pl-9"
           data-testid="customers-search"
         />
       </div>
+      <Button
+        v-if="auth.hasPermission('customers.create')"
+        variant="accent"
+        class="shrink-0"
+        @click="openCreate"
+        data-testid="create-customer-btn"
+      >
+        <Plus class="w-4 h-4" /> New customer
+      </Button>
     </Card>
 
     <Card>
-      <div class="overflow-x-auto">
+      <div class="max-h-[36rem] overflow-auto">
         <table class="w-full text-sm" data-testid="customers-table">
           <thead
-            class="bg-muted/50 text-xs uppercase tracking-wider text-muted-foreground"
+            class="sticky top-0 z-10 bg-muted text-xs uppercase tracking-wider text-muted-foreground"
           >
-            <tr>
-              <th class="text-left p-3">Name</th>
-              <th class="text-left p-3">Email</th>
-              <th class="text-left p-3">Phone</th>
-              <th class="text-left p-3">Address</th>
-              <th class="text-right p-3">Actions</th>
-            </tr>
+            <GridFilters
+              v-model="filters"
+              :fields="filterFields"
+              action-column
+              :sort-by="sortBy"
+              :sort-order="sortOrder"
+              @sort="customerStore.toggleSort"
+              @update:model-value="page = 1"
+            />
           </thead>
           <tbody>
-            <tr v-if="query.isLoading.value">
+            <tr v-if="isLoading">
               <td colspan="5" class="p-8 text-center text-muted-foreground">
                 Loading…
               </td>
@@ -174,6 +222,8 @@ function confirmDelete(c: any) {
                     v-if="auth.hasPermission('customers.update')"
                     variant="ghost"
                     size="icon"
+                    title="Edit customer"
+                    aria-label="Edit customer"
                     @click="openEdit(c)"
                     :data-testid="`edit-customer-${c.id}`"
                     ><Pencil class="w-4 h-4"
@@ -182,6 +232,8 @@ function confirmDelete(c: any) {
                     v-if="auth.hasPermission('customers.delete')"
                     variant="ghost"
                     size="icon"
+                    title="Delete customer"
+                    aria-label="Delete customer"
                     @click="confirmDelete(c)"
                     :data-testid="`delete-customer-${c.id}`"
                     ><Trash2 class="w-4 h-4 text-destructive"
@@ -192,30 +244,18 @@ function confirmDelete(c: any) {
           </tbody>
         </table>
       </div>
-      <div
+      <GridPagination
         v-if="meta"
-        class="p-3 border-t border-border flex items-center justify-between text-sm"
-      >
-        <div class="text-muted-foreground">
-          Page {{ meta.page }} of {{ meta.total_pages }}
-        </div>
-        <div class="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            :disabled="page <= 1"
-            @click="page--"
-            >Prev</Button
-          >
-          <Button
-            variant="outline"
-            size="sm"
-            :disabled="page >= (meta.total_pages || 1)"
-            @click="page++"
-            >Next</Button
-          >
-        </div>
-      </div>
+        :meta="meta"
+        :page="page"
+        :page-size="pageSize"
+        item-label="customers"
+        @page-change="page = $event"
+        @page-size-change="
+          pageSize = $event;
+          page = 1;
+        "
+      />
     </Card>
 
     <Modal
@@ -223,7 +263,7 @@ function confirmDelete(c: any) {
       :title="editing ? 'Edit customer' : 'New customer'"
       @close="showForm = false"
     >
-      <form class="space-y-4" @submit.prevent="save.mutate()">
+      <form class="space-y-4" novalidate @submit.prevent="requestSave">
         <div>
           <label
             class="text-xs font-medium text-muted-foreground uppercase tracking-wider"
@@ -232,9 +272,15 @@ function confirmDelete(c: any) {
           <Input
             v-model="form.customer_name"
             required
+            maxlength="200"
+            :aria-invalid="!!formErrors.customer_name"
+            @update:model-value="formErrors.customer_name = ''"
             class="mt-1.5"
             data-testid="form-customer-name"
           />
+          <p v-if="formErrors.customer_name" class="mt-1 text-xs text-destructive">
+            {{ formErrors.customer_name }}
+          </p>
         </div>
         <div>
           <label
@@ -244,9 +290,15 @@ function confirmDelete(c: any) {
           <Input
             v-model="form.customer_address"
             required
+            maxlength="500"
+            :aria-invalid="!!formErrors.customer_address"
+            @update:model-value="formErrors.customer_address = ''"
             class="mt-1.5"
             data-testid="form-customer-address"
           />
+          <p v-if="formErrors.customer_address" class="mt-1 text-xs text-destructive">
+            {{ formErrors.customer_address }}
+          </p>
         </div>
         <div class="grid grid-cols-2 gap-4">
           <div>
@@ -257,9 +309,15 @@ function confirmDelete(c: any) {
             <Input
               v-model="form.email"
               type="email"
+              maxlength="255"
+              :aria-invalid="!!formErrors.email"
+              @update:model-value="formErrors.email = ''"
               class="mt-1.5"
               data-testid="form-customer-email"
             />
+            <p v-if="formErrors.email" class="mt-1 text-xs text-destructive">
+              {{ formErrors.email }}
+            </p>
           </div>
           <div>
             <label
@@ -268,9 +326,15 @@ function confirmDelete(c: any) {
             >
             <Input
               v-model="form.phone"
+              maxlength="30"
+              :aria-invalid="!!formErrors.phone"
+              @update:model-value="formErrors.phone = ''"
               class="mt-1.5"
               data-testid="form-customer-phone"
             />
+            <p v-if="formErrors.phone" class="mt-1 text-xs text-destructive">
+              {{ formErrors.phone }}
+            </p>
           </div>
         </div>
         <div class="grid grid-cols-2 gap-4">
@@ -297,9 +361,14 @@ function confirmDelete(c: any) {
             <Input
               v-model="form.birth_date"
               type="date"
+              :aria-invalid="!!formErrors.birth_date"
+              @update:model-value="formErrors.birth_date = ''"
               class="mt-1.5"
               data-testid="form-customer-birthdate"
             />
+            <p v-if="formErrors.birth_date" class="mt-1 text-xs text-destructive">
+              {{ formErrors.birth_date }}
+            </p>
           </div>
         </div>
         <div class="flex justify-end gap-2 pt-2">
@@ -316,5 +385,26 @@ function confirmDelete(c: any) {
         </div>
       </form>
     </Modal>
+
+    <ConfirmDialog
+      v-if="showUpdateConfirm && editing"
+      title="Confirm customer update"
+      :message="`Save changes to ${form.customer_name}?`"
+      confirm-label="Save changes"
+      :loading="save.isPending.value"
+      @cancel="showUpdateConfirm = false"
+      @confirm="save.mutate()"
+    />
+
+    <ConfirmDialog
+      v-if="deleting"
+      title="Delete customer"
+      :message="`Delete ${deleting.customer_name}? This action cannot be undone.`"
+      confirm-label="Delete customer"
+      variant="destructive"
+      :loading="del.isPending.value"
+      @cancel="deleting = null"
+      @confirm="deleteCustomer"
+    />
   </div>
 </template>

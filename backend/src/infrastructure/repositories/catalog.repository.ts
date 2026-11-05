@@ -10,6 +10,26 @@ import {
   NotFoundError,
   ValidationError,
 } from "@application/models/error/application.error";
+import { applyListFilters } from "./list-filters";
+import type { FilterFieldMap } from "./list-filters";
+
+const productFilterFields: FilterFieldMap = {
+  product_code: { expression: "product.productCode", kind: "text" },
+  product_name: { expression: "product.productName", kind: "text" },
+  stock: { expression: "product.stock", kind: "number" },
+  price: { expression: "product.price", kind: "number" },
+  low_stock_threshold: {
+    expression: "product.lowStockThreshold",
+    kind: "number",
+  },
+};
+
+const customerFilterFields: FilterFieldMap = {
+  customer_name: { expression: "customer.customerName", kind: "text" },
+  email: { expression: "customer.email", kind: "text" },
+  phone: { expression: "customer.phone", kind: "text" },
+  customer_address: { expression: "customer.customerAddress", kind: "text" },
+};
 
 export class ProductRepository implements IProductRepository {
   constructor(private readonly dataSource: DataSource) {}
@@ -37,19 +57,21 @@ export class ProductRepository implements IProductRepository {
         },
       );
     }
-    const [items, total] = await qb
-      .orderBy(`product.${sort}`, query.sortOrder ?? "ASC")
-      .addOrderBy("product.productId", "ASC")
-      .skip((query.page - 1) * query.limit)
-      .take(query.limit)
-      .getManyAndCount();
+    applyListFilters(qb, query.filters, productFilterFields);
+    qb.orderBy(`product.${sort}`, query.sortOrder ?? "ASC").addOrderBy(
+      "product.productId",
+      "ASC",
+    );
+    if (!query.all)
+      qb.skip((query.page - 1) * query.limit).take(query.limit);
+    const [items, total] = await qb.getManyAndCount();
     return {
       items,
       meta: {
         page: query.page,
-        per_page: query.limit,
+        per_page: query.all ? total : query.limit,
         total,
-        total_pages: Math.ceil(total / query.limit),
+        total_pages: query.all ? (total > 0 ? 1 : 0) : Math.ceil(total / query.limit),
       },
     };
   }
@@ -210,19 +232,21 @@ export class CustomerRepository implements ICustomerRepository {
         },
       );
     }
-    const [items, total] = await qb
-      .orderBy(`customer.${sort}`, query.sortOrder ?? "ASC")
-      .addOrderBy("customer.customerId", "ASC")
-      .skip((query.page - 1) * query.limit)
-      .take(query.limit)
-      .getManyAndCount();
+    applyListFilters(qb, query.filters, customerFilterFields);
+    qb.orderBy(`customer.${sort}`, query.sortOrder ?? "ASC").addOrderBy(
+      "customer.customerId",
+      "ASC",
+    );
+    if (!query.all)
+      qb.skip((query.page - 1) * query.limit).take(query.limit);
+    const [items, total] = await qb.getManyAndCount();
     return {
       items,
       meta: {
         page: query.page,
-        per_page: query.limit,
+        per_page: query.all ? total : query.limit,
         total,
-        total_pages: Math.ceil(total / query.limit),
+        total_pages: query.all ? (total > 0 ? 1 : 0) : Math.ceil(total / query.limit),
       },
     };
   }

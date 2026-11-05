@@ -3,7 +3,11 @@ import { StatusCodes } from "http-status-codes";
 import { CustomerRepository } from "@infrastructure/repositories/catalog.repository";
 import { CustomerUseCase } from "@application/use-cases/customers/customer.use-case";
 import dataSource from "@infrastructure/config/db-context";
-import { asyncRoute, paginationFromRequest } from "./endpoint-helpers";
+import {
+  asyncRoute,
+  gridListFromRequest,
+  paginationFromRequest,
+} from "./endpoint-helpers";
 import {
   authenticate,
   requirePermission,
@@ -37,6 +41,31 @@ router.get(
       paginationFromRequest(req, {
         allowedSortBy: ["customerName", "createdAt", "email"],
         allowSearch: true,
+        allowedFilters: {
+          customer_name: "text",
+          email: "text",
+          phone: "text",
+          customer_address: "text",
+        },
+      }),
+    );
+    res.status(200).json(customerListResponse(result.items, result.meta));
+  }),
+);
+router.post(
+  "/filter",
+  requirePermission("customers.view"),
+  asyncRoute(async (req, res) => {
+    const result = await useCase.list(
+      gridListFromRequest(req, {
+        allowedSortBy: ["customerName", "createdAt", "email"],
+        allowSearch: true,
+        allowedFilters: {
+          customer_name: "text",
+          email: "text",
+          phone: "text",
+          customer_address: "text",
+        },
       }),
     );
     res.status(200).json(customerListResponse(result.items, result.meta));

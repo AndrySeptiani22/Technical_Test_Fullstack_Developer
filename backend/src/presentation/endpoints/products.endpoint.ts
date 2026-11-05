@@ -6,6 +6,7 @@ import dataSource from "@infrastructure/config/db-context";
 import {
   asyncRoute,
   currentUserId,
+  gridListFromRequest,
   paginationFromRequest,
 } from "./endpoint-helpers";
 import {
@@ -50,6 +51,41 @@ router.get(
           "createdAt",
         ],
         allowSearch: true,
+        allowedFilters: {
+          product_code: "text",
+          product_name: "text",
+          stock: "number",
+          price: "number",
+          low_stock_threshold: "number",
+        },
+      }),
+    );
+    res
+      .status(StatusCodes.OK)
+      .json(productListResponse(result.items, result.meta));
+  }),
+);
+router.post(
+  "/filter",
+  requirePermission("products.view"),
+  asyncRoute(async (req, res) => {
+    const result = await useCase.list(
+      gridListFromRequest(req, {
+        allowedSortBy: [
+          "productName",
+          "productCode",
+          "price",
+          "stock",
+          "createdAt",
+        ],
+        allowSearch: true,
+        allowedFilters: {
+          product_code: "text",
+          product_name: "text",
+          stock: "number",
+          price: "number",
+          low_stock_threshold: "number",
+        },
       }),
     );
     res

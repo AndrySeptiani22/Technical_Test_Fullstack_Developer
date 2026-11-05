@@ -5,6 +5,7 @@ import { HTTPContextAccessor } from "@infrastructure/config/http-context-accesso
 import dataSource from "@infrastructure/config/db-context";
 import { getBrowserUserAgent } from "@infrastructure/utilities/browser-user-agent";
 import type { ShopRequest } from "./shop-auth.middleware";
+import { auditRequestMetadata } from "./audit-metadata";
 
 const swaggerAssetPattern =
   /^\/(?:favicon(?:-[\w-]+)?\.ico|favicon-[\w-]+\.png|swagger-ui-[\w-]+\.(?:js|css)|swagger-ui\.(?:js|css)|oauth2-redirect\.html)$/i;
@@ -97,7 +98,7 @@ export const shopApiAudit: RequestHandler = (
         ipAddress: req.ip || req.socket.remoteAddress || null,
         userAgent: browser,
         errorCode: res.statusCode >= 400 ? `HTTP_${res.statusCode}` : null,
-        metadata: {},
+        metadata: auditRequestMetadata(req.body),
       })
       .catch((error: unknown) => {
         console.error(

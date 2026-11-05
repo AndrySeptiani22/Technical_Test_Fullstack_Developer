@@ -2,7 +2,7 @@ import { Router } from "express";
 import { OrderRepository } from "@infrastructure/repositories/order.repository";
 import { OrderUseCase } from "@application/use-cases/orders/order.use-case";
 import dataSource from "@infrastructure/config/db-context";
-import { asyncRoute } from "./endpoint-helpers";
+import { asyncRoute, gridListFromRequest } from "./endpoint-helpers";
 import {
   authenticate,
   getAuth,
@@ -14,6 +14,7 @@ import {
 } from "@application/models/error/application.error";
 import { rateLimit } from "@presentation/middleware/rate-limit.middleware";
 import { parseRequest } from "@application/models/validators/common.validator";
+import { parseListFilters } from "@application/models/validators/list-filter.validator";
 import {
   emptyRequestSchema,
   orderCancelRequestSchema,
@@ -49,14 +50,60 @@ router.get(
       orderListQuerySchema,
       req.query,
     );
+    const filters = parseListFilters(
+      query.filters,
+      {
+        order_number: "text",
+        order_date: "date",
+        status: "text",
+        total_amount: "number",
+        items_count: "number",
+      },
+      {
+        status: ["PENDING", "PAID", "SHIPPED", "COMPLETED", "CANCELLED"],
+      },
+    );
     const result = await useCase.list({
       page: query.page,
       limit: Math.min(query.limit ?? query.pageSize ?? 20, 100),
+      sortBy: query.sort_by ?? "orderDate",
+      sortOrder: query.sort_order ?? "DESC",
+      search: query.search,
       status: query.status,
       customerId: query.customer_id,
       from: query.from,
       to: query.to,
+      filters,
     });
+    res.status(200).json(orderListResponse(result.items, result.meta));
+  }),
+);
+router.post(
+  "/filter",
+  requirePermission("orders.view"),
+  asyncRoute(async (req, res) => {
+    const result = await useCase.list(
+      gridListFromRequest(req, {
+        allowedSortBy: [
+          "orderNumber",
+          "orderDate",
+          "status",
+          "totalAmount",
+          "itemsCount",
+        ],
+        allowSearch: true,
+        allowedFilters: {
+          order_number: "text",
+          order_date: "date",
+          status: "text",
+          total_amount: "number",
+          items_count: "number",
+        },
+        allowedFilterValues: {
+          status: ["PENDING", "PAID", "SHIPPED", "COMPLETED", "CANCELLED"],
+        },
+      }),
+    );
     res.status(200).json(orderListResponse(result.items, result.meta));
   }),
 );

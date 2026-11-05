@@ -37,7 +37,7 @@ Akun seed lokal: `admin@azatech.id` / `Admin#12345` dan `cashier@azatech.id` / `
 
 Semua endpoint terproteksi memakai `Authorization: Bearer <accessToken>`. Order creation menerima JSON `{ customer_id, items: [{ product_id, quantity }] }` dan wajib menyertakan header `Idempotency-Key` berisi UUID. Harga dan total selalu dihitung dari produk di database.
 
-List endpoint mendukung `page`, `limit`, `search`, `sort_by`, dan `sort_order` (sort hanya pada kolom yang diizinkan). Sales report menerima `from`, `to`, dan `group_by=day|month`; top products menerima `from`, `to`, dan `limit`.
+List endpoint GET mendukung `page`, `limit`, `search`, `sort_by`, dan `sort_order`. Grid filter menggunakan `POST /api/products/filter`, `POST /api/customers/filter`, dan `POST /api/orders/filter` dengan parameter yang sama di body JSON dan `filters` sebagai array objek, misalnya `{ "page": 1, "limit": 10, "filters": [{ "field": "stock", "operator": "greater_than", "value": "5" }] }`. Grid `limit` mendukung 5, 10, 20, atau `"all"`; all mengembalikan semua data yang cocok. Sort hanya berlaku pada kolom yang diizinkan; order search mencari nomor order. Beberapa filter digabungkan dengan AND. Teks mendukung `equals`, `not_equals`, `contains`, `not_contains`, `starts_with`, `ends_with`, `is_empty`, dan `is_not_empty`; tanggal/angka mendukung perbandingan sama dengan, tidak sama, lebih besar, dan lebih kecil. Field yang bisa difilter hanya kolom grid yang diizinkan untuk tiap endpoint. Sales report menerima `from`, `to`, dan `group_by=day|month`; top products menerima `from`, `to`, dan `limit`.
 Body, query, path parameter, dan header input yang digunakan endpoint divalidasi menggunakan Zod.
 
 ## Implementasi inti technical test

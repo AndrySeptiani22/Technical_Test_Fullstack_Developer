@@ -83,6 +83,14 @@ const paginationParameters = [
     schema: { type: "integer", minimum: 1, maximum: 100 },
   },
   {
+    name: "filters",
+    in: "query",
+    description:
+      "URL-encoded JSON array of field/operator/value filters. Multiple filters are combined with AND; fields depend on the resource.",
+    schema: { type: "string", maxLength: 8000 },
+    example: '[{"field":"stock","operator":"greater_than","value":"5"}]',
+  },
+  {
     name: "search",
     in: "query",
     description: "Search term, where supported.",
@@ -107,6 +115,75 @@ const requestBody = (schema: string, example: unknown, required = true) => ({
     "application/json": {
       schema: { $ref: `#/components/schemas/${schema}` },
       example,
+    },
+  },
+});
+
+const gridListRequestBody = (exampleFilter: unknown) => ({
+  required: true,
+  content: {
+    "application/json": {
+      schema: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          page: { type: "integer", minimum: 1, default: 1 },
+          limit: {
+            oneOf: [
+              { type: "integer", minimum: 1, maximum: 100 },
+              { type: "string", const: "all" },
+            ],
+            default: 10,
+          },
+          search: { type: "string", maxLength: 200 },
+          sort_by: { type: "string", maxLength: 50 },
+          sort_order: { type: "string", enum: ["ASC", "DESC"], default: "ASC" },
+          filters: {
+            type: "array",
+            maxItems: 20,
+            items: {
+              type: "object",
+              additionalProperties: false,
+              required: ["field", "operator"],
+              properties: {
+                field: { type: "string", minLength: 1, maxLength: 50 },
+                operator: {
+                  type: "string",
+                  enum: [
+                    "equals",
+                    "not_equals",
+                    "contains",
+                    "not_contains",
+                    "greater_than",
+                    "greater_or_equal",
+                    "less_than",
+                    "less_or_equal",
+                    "starts_with",
+                    "ends_with",
+                    "is_empty",
+                    "is_not_empty",
+                    "in",
+                  ],
+                },
+                value: { type: "string", maxLength: 200 },
+                values: {
+                  type: "array",
+                  minItems: 1,
+                  maxItems: 5,
+                  items: { type: "string", minLength: 1, maxLength: 50 },
+                },
+              },
+            },
+          },
+        },
+      },
+      example: {
+        page: 1,
+        limit: 20,
+        sort_by: "productName",
+        sort_order: "ASC",
+        filters: [exampleFilter],
+      },
     },
   },
 });
@@ -434,6 +511,27 @@ const openApiDocument: JsonObject = {
         },
       },
     },
+    "/api/products/filter": {
+      post: {
+        tags: ["Products"],
+        summary: "Filter and list products (products.view)",
+        security: bearer,
+        requestBody: gridListRequestBody({
+          field: "stock",
+          operator: "greater_than",
+          value: "5",
+        }),
+        responses: successResponses(
+          "Filtered and paginated products.",
+          ok("OK", [productExample], {
+            page: 1,
+            per_page: 20,
+            total: 1,
+            total_pages: 1,
+          }),
+        ),
+      },
+    },
     "/api/products/{id}/stock-adjustments": {
       post: {
         tags: ["Products"],
@@ -518,6 +616,27 @@ const openApiDocument: JsonObject = {
         ),
       },
     },
+    "/api/customers/filter": {
+      post: {
+        tags: ["Customers"],
+        summary: "Filter and list customers (customers.view)",
+        security: bearer,
+        requestBody: gridListRequestBody({
+          field: "customer_name",
+          operator: "contains",
+          value: "Ayu",
+        }),
+        responses: successResponses(
+          "Filtered and paginated customers.",
+          ok("OK", [customerExample], {
+            page: 1,
+            per_page: 20,
+            total: 1,
+            total_pages: 1,
+          }),
+        ),
+      },
+    },
     "/api/customers/{id}": {
       get: {
         tags: ["Customers"],
@@ -578,6 +697,26 @@ const openApiDocument: JsonObject = {
         security: bearer,
         parameters: [
           ...paginationParameters.slice(0, 3),
+          {
+            name: "sort_by",
+            in: "query",
+            schema: {
+              type: "string",
+              enum: [
+                "orderNumber",
+                "orderDate",
+                "status",
+                "totalAmount",
+                "itemsCount",
+              ],
+              default: "orderDate",
+            },
+          },
+          {
+            name: "sort_order",
+            in: "query",
+            schema: { type: "string", enum: ["ASC", "DESC"], default: "DESC" },
+          },
           {
             name: "status",
             in: "query",
@@ -648,6 +787,27 @@ const openApiDocument: JsonObject = {
             error("RATE_LIMITED", "Too many requests. Please try again later."),
           ),
         },
+      },
+    },
+    "/api/orders/filter": {
+      post: {
+        tags: ["Orders"],
+        summary: "Filter and list orders (orders.view)",
+        security: bearer,
+        requestBody: gridListRequestBody({
+          field: "status",
+          operator: "in",
+          values: ["PAID", "SHIPPED"],
+        }),
+        responses: successResponses(
+          "Filtered and paginated orders.",
+          ok("OK", [orderExample], {
+            page: 1,
+            per_page: 20,
+            total: 1,
+            total_pages: 1,
+          }),
+        ),
       },
     },
     "/api/orders/{id}": {

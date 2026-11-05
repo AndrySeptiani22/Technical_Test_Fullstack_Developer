@@ -102,6 +102,14 @@ test("product endpoint handlers cover successful CRUD and stock paths", async ()
     });
     assert.equal(list.statusCode, 200);
     assert.equal((list.body as { data: unknown[] }).data.length, 1);
+    const filteredList = await invokeEndpoint(productsRouter, "post", "/filter", {
+      body: {
+        page: 1,
+        limit: 20,
+        filters: [{ field: "stock", operator: "greater_than", value: "5" }],
+      },
+    });
+    assert.equal(filteredList.statusCode, 200);
 
     const get = await invokeEndpoint(productsRouter, "get", "/:id", { params: { id: "17" } });
     assert.equal(get.statusCode, 200);
@@ -162,6 +170,9 @@ test("customer endpoint handlers cover successful CRUD and not-found validation 
 
   try {
     assert.equal((await invokeEndpoint(customersRouter, "get", "/")).statusCode, 200);
+    assert.equal((await invokeEndpoint(customersRouter, "post", "/filter", {
+      body: { page: 1, filters: [{ field: "customer_name", operator: "contains", value: "Ayu" }] },
+    })).statusCode, 200);
     assert.equal((await invokeEndpoint(customersRouter, "get", "/:id", {
       params: { id: customerId },
     })).statusCode, 200);
@@ -275,6 +286,12 @@ test("order endpoint handlers cover listing, idempotency, transitions, invoice, 
   try {
     assert.equal((await invokeEndpoint(ordersRouter, "get", "/", {
       query: { status: "pending" },
+    })).statusCode, 200);
+    assert.equal((await invokeEndpoint(ordersRouter, "post", "/filter", {
+      body: {
+        page: 1,
+        filters: [{ field: "status", operator: "equals", value: "PAID" }],
+      },
     })).statusCode, 200);
 
     const createRequest = {

@@ -2,9 +2,12 @@
 import { computed } from "vue";
 import { useRoute, RouterLink } from "vue-router";
 import { useQuery } from "@tanstack/vue-query";
-import { useCases } from "@/application/use-cases";
-import Card from "../components/ui/card.vue";
-import { formatIDR, formatDateTime } from "../lib/utils";
+import {
+  getProduct,
+  listStockMovements,
+} from "@/application/use-cases/product.use-case";
+import Card from "@/presentation/components/ui/card.vue";
+import { formatIDR, formatDateTime } from "@/presentation/lib/utils";
 import { ArrowLeft } from "lucide-vue-next";
 
 const route = useRoute();
@@ -12,12 +15,12 @@ const id = computed(() => route.params.id as string);
 
 const product = useQuery({
   queryKey: ["product", id],
-  queryFn: async () => (await useCases.getProduct(id.value)).data,
+  queryFn: async () => (await getProduct(id.value)).data,
 });
 const movements = useQuery({
   queryKey: ["movements", id],
   queryFn: async () =>
-    (await useCases.listStockMovements(id.value, { page: 1, limit: 50 })).data,
+    (await listStockMovements(id.value, { page: 1, limit: 50 })).data,
 });
 </script>
 

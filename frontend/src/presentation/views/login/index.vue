@@ -1,19 +1,31 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import { useRouter, useRoute } from "vue-router";
-import { useAuthStore } from "../stores/auth.store";
-import Button from "../components/ui/button.vue";
-import Input from "../components/ui/input.vue";
+import { useAuthStore } from "@/presentation/stores/auth.store";
+import { loginFormSchema } from "@/application/validation/request-schemas";
+import { fieldErrors } from "@/presentation/lib/form-validation";
+import Button from "@/presentation/components/ui/button.vue";
+import Input from "@/presentation/components/ui/input.vue";
 import { Store, ArrowRight } from "lucide-vue-next";
 
 const auth = useAuthStore();
 const router = useRouter();
 const route = useRoute();
 
-const email = ref("admin@example.com");
-const password = ref("admin123");
+const email = ref("admin@azatech.id");
+const password = ref("Admin#12345");
+const validationErrors = ref<Record<string, string>>({});
 
 async function submit() {
+  const result = loginFormSchema.safeParse({
+    email: email.value,
+    password: password.value,
+  });
+  if (!result.success) {
+    validationErrors.value = fieldErrors(result.error);
+    return;
+  }
+  validationErrors.value = {};
   const ok = await auth.login(email.value, password.value);
   if (ok) {
     const redirect = (route.query.redirect as string) || "/dashboard";
@@ -23,11 +35,11 @@ async function submit() {
 
 function quickFill(role: "admin" | "staff") {
   if (role === "admin") {
-    email.value = "admin@example.com";
-    password.value = "admin123";
+    email.value = "admin@azatech.id";
+    password.value = "Admin#12345";
   } else {
-    email.value = "staff@example.com";
-    password.value = "staff123";
+    email.value = "cashier@azatech.id";
+    password.value = "Cashier#12345";
   }
 }
 </script>
@@ -96,6 +108,7 @@ function quickFill(role: "admin" | "staff") {
 
         <form
           class="mt-8 space-y-4"
+          novalidate
           @submit.prevent="submit"
           data-testid="login-form"
         >
@@ -108,9 +121,14 @@ function quickFill(role: "admin" | "staff") {
               v-model="email"
               type="email"
               required
+              :aria-invalid="!!validationErrors.email"
+              @update:model-value="validationErrors.email = ''"
               class="mt-1.5"
               data-testid="login-email-input"
             />
+            <p v-if="validationErrors.email" class="mt-1 text-xs text-destructive">
+              {{ validationErrors.email }}
+            </p>
           </div>
           <div>
             <label
@@ -121,9 +139,15 @@ function quickFill(role: "admin" | "staff") {
               v-model="password"
               type="password"
               required
+              maxlength="200"
+              :aria-invalid="!!validationErrors.password"
+              @update:model-value="validationErrors.password = ''"
               class="mt-1.5"
               data-testid="login-password-input"
             />
+            <p v-if="validationErrors.password" class="mt-1 text-xs text-destructive">
+              {{ validationErrors.password }}
+            </p>
           </div>
 
           <p
@@ -160,7 +184,7 @@ function quickFill(role: "admin" | "staff") {
             >
               <div class="text-xs font-semibold">Admin</div>
               <div class="text-[11px] text-muted-foreground font-mono">
-                admin@example.com
+                admin@azatech.id
               </div>
             </button>
             <button
@@ -168,9 +192,9 @@ function quickFill(role: "admin" | "staff") {
               @click="quickFill('staff')"
               data-testid="fill-staff-btn"
             >
-              <div class="text-xs font-semibold">Staff</div>
+              <div class="text-xs font-semibold">Cashier</div>
               <div class="text-[11px] text-muted-foreground font-mono">
-                staff@example.com
+                cashier@azatech.id
               </div>
             </button>
           </div>
