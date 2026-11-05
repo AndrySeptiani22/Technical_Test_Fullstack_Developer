@@ -377,7 +377,11 @@ BEGIN
     v_user    := NULLIF(current_setting('app.user_id', true), '')::uuid;
     v_request := NULLIF(current_setting('app.request_id', true), '');
 
-    IF TG_OP = 'UPDATE' THEN
+    IF TG_OP = 'INSERT' THEN
+        v_after := to_jsonb(NEW);
+    ELSIF TG_OP = 'UPDATE' THEN
+        v_before := to_jsonb(OLD);
+        v_after  := to_jsonb(NEW);
         IF (v_before - 'UPDATED_AT') = (v_after - 'UPDATED_AT') THEN
             RETURN NULL;
         END IF;
@@ -387,6 +391,8 @@ BEGIN
           FROM jsonb_each(v_after) a
          WHERE a.key <> 'UPDATED_AT'
            AND v_before -> a.key IS DISTINCT FROM a.value;
+    ELSE
+        v_before := to_jsonb(OLD);
     END IF;
 
     INSERT INTO "AUDIT_LOGS"
