@@ -1,0 +1,76 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-azatech_database}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the root .env file}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/azatech_database.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./database/azatech_seed.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+    environment:
+      NODE_ENV: production
+      APP_HOST: 0.0.0.0
+      APP_PORT: 1919
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080}
+      APP_JWT_SECRET: ${APP_JWT_SECRET:?Set APP_JWT_SECRET in the root .env file}
+      APP_JWT_REFRESH_SECRET: ${APP_JWT_REFRESH_SECRET:-}
+      APP_TOKEN_EXPIRES_IN: ${APP_TOKEN_EXPIRES_IN:-1h}
+      APP_REFRESH_TOKEN_EXPIRES_IN: ${APP_REFRESH_TOKEN_EXPIRES_IN:-7d}
+      APP_BCRYPT_SALT_ROUNDS: ${APP_BCRYPT_SALT_ROUNDS:-12}
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: ${POSTGRES_USER:-postgres}
+      DB_PASS: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the root .env file}
+      DB_NAME: ${POSTGRES_DB:-azatech_database}
+      DB_SSL: "false"
+      DB_POOL_MAX: ${DB_POOL_MAX:-10}
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:1919/api/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: /api
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 5s
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

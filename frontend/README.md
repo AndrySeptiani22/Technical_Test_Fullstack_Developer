@@ -50,6 +50,18 @@ src/
 
 ## Run
 
+### Docker Compose
+
+From the repository root, copy `.env.example` to `.env`, set a database password and an `APP_JWT_SECRET` of at least 32 characters, then run:
+
+```bash
+docker compose up --build
+```
+
+Open `http://localhost:8080`. Nginx serves the production frontend and proxies `/api` requests to the backend container. The Compose stack initializes PostgreSQL from the schema and seed scripts on first startup.
+
+### Local development
+
 ```bash
 yarn install
 yarn start   # http://localhost:3000

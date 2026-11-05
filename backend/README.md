@@ -5,6 +5,20 @@ Model request, Zod validator, dan formatter/tipe response endpoint berada terpis
 
 ## Menjalankan aplikasi
 
+### Docker Compose
+
+From the repository root, copy `.env.example` to `.env`, replace `POSTGRES_PASSWORD` and `APP_JWT_SECRET` with strong local values (the JWT secret must be at least 32 characters), then start the stack:
+
+```bash
+docker compose up --build
+```
+
+Open the frontend at `http://localhost:8080`; the frontend container proxies API requests to the backend. The API is also available on the Compose network as `backend:1919`. PostgreSQL is initialized with `database/azatech_database.sql` and `database/azatech_seed.sql` on the first startup, and persists data in the `postgres_data` volume. These SQL scripts only run when that volume is empty.
+
+To stop the stack, run `docker compose down`. To remove the database and all persisted data as well, run `docker compose down --volumes`.
+
+### Local Node.js
+
 1. Salin `.env.example` menjadi `.env`, lalu isi kredensial PostgreSQL dan `APP_JWT_SECRET` (minimal 32 karakter).
 2. Install dependency: `npm install`.
 3. Jalankan schema dan seed dari folder repository:
@@ -67,6 +81,6 @@ Implementasi ini menambahkan alur bisnis utama ke backend yang diberikan, tetapi
 2. Redis cache dashboard dan strategi invalidasinya belum diimplementasikan; dashboard summary saat ini dihitung dari PostgreSQL.
 3. Health check saat ini memeriksa PostgreSQL saja karena koneksi Redis belum ditambahkan.
 4. Belum ada integration test concurrency/idempotency terhadap PostgreSQL sungguhan.
-5. OpenAPI/Swagger, Docker Compose, Dockerfile, GitHub Actions, dan frontend berada di luar archive backend yang diberikan dan belum dibuat di sini.
+5. GitHub Actions belum dibuat.
 
 Lihat `IMPLEMENTATION_NOTES.md` untuk keputusan teknis dan tindak lanjut.
