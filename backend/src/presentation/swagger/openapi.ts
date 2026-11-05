@@ -58,8 +58,14 @@ const idParameter = {
   name: "id",
   in: "path",
   required: true,
-  description: "Resource identifier.",
-  schema: { type: "string" },
+  description:
+    "Positive signed 64-bit resource identifier, represented as a decimal string.",
+  schema: {
+    type: "string",
+    minLength: 1,
+    maxLength: 19,
+    pattern: "^[1-9][0-9]*$",
+  },
   example: "1",
 };
 
@@ -73,8 +79,9 @@ const paginationParameters = [
   {
     name: "limit",
     in: "query",
-    description: "Results per page (maximum 100).",
-    schema: { type: "integer", minimum: 1, maximum: 100, default: 20 },
+    description:
+      "Requested results per page. Values above 100 are capped by the API.",
+    schema: { type: "integer", minimum: 1, default: 20 },
   },
   {
     name: "pageSize",
@@ -134,6 +141,12 @@ const gridListRequestBody = (exampleFilter: unknown) => ({
               { type: "string", const: "all" },
             ],
             default: 10,
+          },
+          pageSize: {
+            type: "integer",
+            minimum: 1,
+            maximum: 100,
+            description: "Legacy alias for limit.",
           },
           search: { type: "string", maxLength: 200 },
           sort_by: { type: "string", maxLength: 50 },
@@ -272,7 +285,7 @@ const openApiDocument: JsonObject = {
     title: "Azatech Shop API",
     version: "1.0.0",
     description:
-      "Versioned shop API. Authenticate with a JWT access token using the Authorize button. Endpoints require the permissions listed in their summaries.",
+      "Shop and order-management API. Business endpoints are under /api; the root and versioned health checks are public. Authenticate with the JWT access token returned by login using the Authorize button. Permission requirements are listed in endpoint summaries. List GET endpoints accept filters as URL-encoded JSON; grid /filter endpoints accept filters as JSON arrays in their request bodies.",
   },
   servers: [{ url: "/", description: "Current host" }],
   tags: [
@@ -717,6 +730,7 @@ const openApiDocument: JsonObject = {
             in: "query",
             schema: { type: "string", enum: ["ASC", "DESC"], default: "DESC" },
           },
+          ...paginationParameters.slice(3, 5),
           {
             name: "status",
             in: "query",
@@ -757,7 +771,7 @@ const openApiDocument: JsonObject = {
         tags: ["Orders"],
         summary: "Create order (orders.create)",
         description:
-          "Requires an idempotency UUID. Repeating the same key and payload replays the original response.",
+          "Requires an idempotency UUID. Repeating the same key and payload replays the original response. Limited to 30 requests per minute.",
         security: bearer,
         parameters: [
           {
@@ -778,10 +792,30 @@ const openApiDocument: JsonObject = {
             ok("Order created.", orderExample),
             "201",
           ),
-          "200": jsonResponse(
-            "An idempotent replay of the original response.",
-            ok("Order created.", orderExample),
-          ),
+          "201": {
+            ...jsonResponse(
+              "Order created.",
+              ok("Order created.", orderExample),
+            ),
+            headers: {
+              "Idempotency-Replayed": {
+                description: "Whether the response replays an earlier request.",
+                schema: { type: "string", enum: ["false"] },
+              },
+            },
+          },
+          "200": {
+            ...jsonResponse(
+              "An idempotent replay of the original response.",
+              ok("Order created.", orderExample),
+            ),
+            headers: {
+              "Idempotency-Replayed": {
+                description: "Whether the response replays an earlier request.",
+                schema: { type: "string", enum: ["true"] },
+              },
+            },
+          },
           "429": jsonResponse(
             "The order creation rate limit was exceeded.",
             error("RATE_LIMITED", "Too many requests. Please try again later."),
@@ -1066,12 +1100,36 @@ const openApiDocument: JsonObject = {
         properties: {
           product_code: { type: "string", minLength: 1, maxLength: 50 },
           product_name: { type: "string", minLength: 1, maxLength: 200 },
-          stock: { type: "integer", minimum: 0, default: 0 },
+          stock: {
+            type: "integer",
+            minimum: 0,
+            maximum: 2147483647,
+            default: 0,
+          },
           price: {
-            oneOf: [{ type: "string" }, { type: "number" }],
+            description:
+              "Positive decimal with at most two fractional digits, up to 9999999999.99. Send a decimal string to preserve precision.",
+            oneOf: [
+              {
+                type: "string",
+                pattern: "^(?=.*[1-9])[0-9]+(\\.[0-9]{1,2})?$",
+              },
+              {
+                type: "number",
+                minimum: 0,
+                exclusiveMinimum: true,
+                maximum: 9999999999.99,
+                multipleOf: 0.01,
+              },
+            ],
             example: "199000.00",
           },
-          low_stock_threshold: { type: "integer", minimum: 0, default: 5 },
+          low_stock_threshold: {
+            type: "integer",
+            minimum: 0,
+            maximum: 2147483647,
+            default: 5,
+          },
         },
       },
       ProductUpdateRequest: {
@@ -1081,8 +1139,28 @@ const openApiDocument: JsonObject = {
         properties: {
           product_code: { type: "string", minLength: 1, maxLength: 50 },
           product_name: { type: "string", minLength: 1, maxLength: 200 },
-          price: { oneOf: [{ type: "string" }, { type: "number" }] },
-          low_stock_threshold: { type: "integer", minimum: 0 },
+          price: {
+            description:
+              "Positive decimal with at most two fractional digits, up to 9999999999.99. Send a decimal string to preserve precision.",
+            oneOf: [
+              {
+                type: "string",
+                pattern: "^(?=.*[1-9])[0-9]+(\\.[0-9]{1,2})?$",
+              },
+              {
+                type: "number",
+                minimum: 0,
+                exclusiveMinimum: true,
+                maximum: 9999999999.99,
+                multipleOf: 0.01,
+              },
+            ],
+          },
+          low_stock_threshold: {
+            type: "integer",
+            minimum: 0,
+            maximum: 2147483647,
+          },
         },
       },
       StockAdjustmentRequest: {
@@ -1151,9 +1229,20 @@ const openApiDocument: JsonObject = {
               additionalProperties: false,
               properties: {
                 product_id: {
+                  description:
+                    "Positive signed 64-bit product identifier. Numeric input is limited to JavaScript safe integers; decimal strings support the full signed 64-bit range.",
                   oneOf: [
-                    { type: "string", pattern: "^[1-9][0-9]*$" },
-                    { type: "integer", minimum: 1 },
+                    {
+                      type: "string",
+                      minLength: 1,
+                      maxLength: 19,
+                      pattern: "^[1-9][0-9]*$",
+                    },
+                    {
+                      type: "integer",
+                      minimum: 1,
+                      maximum: 9007199254740991,
+                    },
                   ],
                 },
                 quantity: { type: "integer", minimum: 1, maximum: 2147483647 },
@@ -1167,7 +1256,13 @@ const openApiDocument: JsonObject = {
         required: ["cancel_reason"],
         additionalProperties: false,
         properties: {
-          cancel_reason: { type: "string", minLength: 1, maxLength: 500 },
+          cancel_reason: {
+            type: "string",
+            minLength: 1,
+            maxLength: 500,
+            description:
+              "Whitespace is trimmed and the result must not be empty.",
+          },
         },
       },
       EmptyRequest: { type: "object", additionalProperties: false },
